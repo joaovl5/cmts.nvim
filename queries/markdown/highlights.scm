@@ -1,0 +1,3 @@
+;; extends
+
+(document) @cmts.text
