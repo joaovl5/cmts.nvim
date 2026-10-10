@@ -2,6 +2,17 @@
 
 local M = {}
 local attached = setmetatable({}, { __mode = "k" })
+local refreshers = {}
+
+-- All providers finish on_start before on_buf runs, so native parsing cannot
+-- replace our ranges between this repair and the highlighter's on_win callback.
+vim.api.nvim_set_decoration_provider(vim.api.nvim_create_namespace("cmts.markdown"), {
+	on_buf = function(_, buf)
+		if refreshers[buf] then
+			refreshers[buf]()
+		end
+	end,
+})
 
 local function range6(buf, sr, sc, er, ec)
 	return { sr, sc, vim.api.nvim_buf_get_offset(buf, sr) + sc, er, ec, vim.api.nvim_buf_get_offset(buf, er) + ec }
@@ -100,27 +111,32 @@ function M.attach(buf, queries)
 	end
 	attached[parser] = true
 	local pending, running, detached = false, false, false
+	local function refresh()
+		if not pending or running or detached or not vim.api.nvim_buf_is_valid(buf) then
+			return
+		end
+		pending = false
+		running = true
+		-- Native injection discovery resets the ranges. Repair them after it finishes.
+		parser:parse(true)
+		update(parser, buf, queries)
+		running = false
+	end
+	refreshers[buf] = refresh
 	local function schedule()
 		if pending or running or detached then
 			return
 		end
 		pending = true
-		vim.schedule(function()
-			pending = false
-			if detached or not vim.api.nvim_buf_is_valid(buf) then
-				return
-			end
-			running = true
-			-- Native injection discovery resets the ranges. Repair them after it finishes.
-			parser:parse(true)
-			update(parser, buf, queries)
-			running = false
-		end)
+		vim.schedule(refresh)
 	end
 	parser:register_cbs({
 		on_changedtree = schedule,
 		on_detach = function()
 			detached = true
+			if refreshers[buf] == refresh then
+				refreshers[buf] = nil
+			end
 		end,
 	}, true)
 	schedule()

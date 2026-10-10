@@ -119,23 +119,20 @@ function M.setup()
 	end
 	set_highlight()
 	vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = set_highlight })
+	local markdown = require("cmts.markdown")
 	vim.api.nvim_create_autocmd("FileType", {
 		group = group,
 		callback = function(event)
 			local lang = vim.treesitter.language.get_lang(vim.bo[event.buf].filetype)
 			if lang then
 				prepare(lang)
-				vim.schedule(function()
-					require("cmts.markdown").attach(event.buf, queries)
-				end)
+				markdown.attach(event.buf, queries)
 			end
 		end,
 	})
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
 		if vim.api.nvim_buf_is_loaded(buf) then
-			vim.schedule(function()
-				require("cmts.markdown").attach(buf, queries)
-			end)
+			markdown.attach(buf, queries)
 		end
 	end
 end
